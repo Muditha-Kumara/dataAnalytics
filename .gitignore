@@ -1,0 +1,15 @@
+# Virtual Environment
+venv/
+ENV/
+requirements.txt
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Local environment variables
+.env
