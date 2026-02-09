@@ -3,8 +3,8 @@ from bs4 import BeautifulSoup
 from collections import Counter
 
 
-# Configuration
-DATASETS_ROOT = "dataSets"  # New root directory for all datasets
+# project configuration
+DATASETS_ROOT = "dataSets"  # dataSets dir
 TARGET_TAGS = ["title", "h1", "h2", "h3", "h4", "p", "a", "strong", "b", "em"]
 
 
