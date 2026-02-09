@@ -8,7 +8,6 @@ DATASETS_ROOT = "dataSets"  # New root directory for all datasets
 TARGET_TAGS = ["title", "h1", "h2", "h3", "h4", "p", "a", "strong", "b", "em"]
 
 
-
 def analyze_local_dataset(dataset_dir):
     tag_counts = Counter()
     total_keywords_found = 0
@@ -27,14 +26,20 @@ def analyze_local_dataset(dataset_dir):
             soup = BeautifulSoup(f.read(), "lxml")
 
         # 1. Extract Ground Truth from Meta Tags
-        # Common newspaper format: <meta name="keywords" content="word1, word2">
         gt_keywords = []
-        # Find all meta tags with a name attribute
+        # Extract from <meta name="keywords"> and <meta name="news_keywords">
         meta_tags = soup.find_all("meta", attrs={"name": True})
         for meta in meta_tags:
             name = meta.get("name", "").lower()
             if name in ["keywords", "news_keywords"] and meta.get("content"):
                 gt_keywords += [k.strip().lower() for k in meta["content"].split(",")]
+
+        # Extract from <meta property="article:tag" content="...">
+        property_tags = soup.find_all("meta", attrs={"property": True})
+        for meta in property_tags:
+            prop = meta.get("property", "").lower()
+            if prop == "article:tag" and meta.get("content"):
+                gt_keywords.append(meta["content"].strip().lower())
 
         # Remove duplicates
         gt_keywords = list(set(gt_keywords))
@@ -55,7 +60,6 @@ def analyze_local_dataset(dataset_dir):
     return tag_counts, total_keywords_found
 
 
-
 def generate_report(counts, total, dataset_name):
     """Produces the ranked list and importance scores for Project 1[cite: 283, 285]."""
     print(f"\n===== Report for dataset: {dataset_name} =====")
@@ -74,7 +78,6 @@ def generate_report(counts, total, dataset_name):
         percentage = (occ / total) * 100 if total > 0 else 0
         importance_score = round(occ / max_occ, 2)  # Normalized [cite: 289]
         print(f"<{tag}>{' ':<10} | {occ:<12} | {percentage:>10.2f}% | {importance_score:>15.2f}")
-
 
 
 # Execute: Analyze all datasets in the root directory and generate separate reports
