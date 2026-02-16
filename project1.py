@@ -5,15 +5,15 @@ from collections import Counter
 
 # Project Configuration
 DATASETS_ROOT = "dataSets"
-# Required tags per Project 1 specifications [cite: 14-22]
+# Required tags per Project 1 specifications
 TARGET_TAGS = ["title", "h1", "h2", "h3", "h4", "p", "a", "strong", "b", "em"]
 
 
 def get_ground_truth(soup):
-    """Extracts keywords from meta tags as per newspaper dataset structure[cite: 147, 148]."""
+    """Extracts keywords from meta tags as per newspaper dataset structure."""
     gt_keywords = set()
 
-    # Extract from standard meta keywords and news_keywords [cite: 20]
+    # Extract from standard meta keywords and news_keywords
     meta_tags = soup.find_all("meta", attrs={"name": True})
     for meta in meta_tags:
         name = meta.get("name", "").lower()
@@ -42,6 +42,8 @@ def analyze_local_dataset(dataset_dir):
             if file.lower().endswith((".htm", ".html")):
                 html_files.append(os.path.join(root, file))
 
+    print()
+    print("*" * 75)
     print(f"Analyzing {len(html_files)} files in {dataset_dir}...")
 
     for file_path in html_files:
@@ -55,7 +57,7 @@ def analyze_local_dataset(dataset_dir):
         if not gt_keywords:
             continue
 
-        # 1. Analyze Standard HTML Tags [cite: 15-21]
+        # 1. Analyze Standard HTML Tags
         for tag_name in TARGET_TAGS:
             elements = soup.find_all(tag_name)
             for el in elements:
@@ -78,20 +80,20 @@ def analyze_local_dataset(dataset_dir):
 
 
 def generate_report(counts, total, dataset_name):
-    """Produces the ranked list and importance scores[cite: 37, 41]."""
-    print(f"\n===== REPORT: {dataset_name} =====")
+    """Produces the ranked list and importance scores."""
+    print(f"\n{'===== REPORT: ' + dataset_name + ' =====':^75}")
     print(
         f"{'HTML Tag':<15} | {'Occurrences':<12} | {'Percentage':<12} | {'Importance Score':<12}"
     )
     print("-" * 75)
 
-    # Ranking top 10 tags by frequency [cite: 39]
+    # Ranking top 10 tags by frequency
     sorted_tags = counts.most_common(10)
     if not sorted_tags:
         print("No keyword occurrences found in the analyzed tags.")
         return
 
-    # Normalization: highest occurrence gets 1.0 [cite: 45, 50]
+    # Normalization: highest occurrence gets 1.0
     max_occ = sorted_tags[0][1]
 
     for tag, occ in sorted_tags:
@@ -108,7 +110,7 @@ if __name__ == "__main__":
     if not os.path.isdir(DATASETS_ROOT):
         print(f"Error: Datasets folder '{DATASETS_ROOT}' not found.")
     else:
-        # The project requires analyzing at least 5 datasets [cite: 7, 33]
+        # The project requires analyzing at least 5 datasets
         datasets = [
             d
             for d in os.listdir(DATASETS_ROOT)
