@@ -1,266 +1,479 @@
+# --- Cell 1: NLTK downloads ---
+import nltk
+nltk.download('punkt',                          quiet=True)
+nltk.download('punkt_tab',                      quiet=True)
+nltk.download('averaged_perceptron_tagger',     quiet=True)
+nltk.download('averaged_perceptron_tagger_eng', quiet=True)
+nltk.download('stopwords',                      quiet=True)
+nltk.download('wordnet',                        quiet=True)
+nltk.download('omw-1.4',                        quiet=True)
+
+# --- Cell 2: Imports & Dataset config ---
 import re
 import urllib.request
 from collections import Counter
 from bs4 import BeautifulSoup
 from bs4.element import Comment
 
-import nltk
 from nltk.corpus import stopwords, wordnet as wn
 from nltk.stem import WordNetLemmatizer
+from nltk.tokenize import word_tokenize, sent_tokenize
+from nltk import pos_tag
 from sklearn.cluster import AgglomerativeClustering
 
-# ----------------------------
-# 0) NLTK downloads (once)
-# ----------------------------
-nltk.download("punkt", quiet=True)
-nltk.download("averaged_perceptron_tagger", quiet=True)
-nltk.download("stopwords", quiet=True)
-nltk.download("wordnet", quiet=True)
-nltk.download("omw-1.4", quiet=True)
-
-# ----------------------------
-# 1) Dataset config
-# ----------------------------
 BASE = "https://cs.uef.fi/~himat/WebRank/dataset_12/dataset_12/herald"
 
-# ----------------------------
-# 2) Fetch helpers
-# ----------------------------
+
+# =============================================================================
+# Cell 3: Fetch helpers for herald dataset
+# =============================================================================
 def fetch_text(url: str) -> str:
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req) as con:
+    with urllib.request.urlopen(req, timeout=15) as con:
         return con.read().decode("utf-8", errors="replace")
 
+
 def read_doc_meta(doc_id: int):
-    page_url = fetch_text(f"{BASE}/{doc_id}/URL.txt").strip()
-    gt_txt = fetch_text(f"{BASE}/{doc_id}/GT.txt")
-    # split robustly
-    raw = re.split(r"[,\n;]+", gt_txt)
+    """Fetch URL.txt and GT.txt for a given document ID."""
+    page_url   = fetch_text(f"{BASE}/{doc_id}/URL.txt").strip()
+    gt_txt     = fetch_text(f"{BASE}/{doc_id}/GT.txt")
+    raw        = re.split(r"[,\n;]+", gt_txt)
     gt_phrases = [w.strip() for w in raw if w.strip()]
     return page_url, gt_phrases
 
-def fetch_html_from_url(url: str) -> str:
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req) as con:
+
+def Web_Scrapper_HTML(URL: str) -> str:
+    """Fetch raw HTML (same function name as teacher)."""
+    request = urllib.request.Request(URL, headers={"User-Agent": "Magic Browser"})
+    with urllib.request.urlopen(request, timeout=15) as con:
         return con.read().decode("utf-8", errors="replace")
 
-# ----------------------------
-# 3) HTML -> visible text
-# ----------------------------
-BLOCK_TAGS = {"style", "script", "head", "title", "meta", "noscript", "svg"}
 
-def extract_visible_text(html: str) -> str:
-    soup = BeautifulSoup(html, "lxml")
-    texts = soup.find_all(string=True)
-    visible = []
-    for t in texts:
-        if isinstance(t, Comment):
-            continue
-        parent = t.parent.name.lower() if (t.parent and t.parent.name) else ""
-        if parent in BLOCK_TAGS:
-            continue
-        s = t.strip()
-        if s:
-            visible.append(s)
-    text = " ".join(visible)
-    return re.sub(r"\s+", " ", text).strip()
+# =============================================================================
+# Cell 4: HTML -> visible text
+#         Improved: prioritise article/main, strip nav/footer
+# =============================================================================
+CONTENT_SELECTORS = [
+    "article", "main", "[role='main']",
+    ".article-body", ".article-content", ".post-content",
+    ".entry-content", ".story-body", "#content", "#main-content"
+]
 
-# ----------------------------
-# 4) Normalization utilities (CRITICAL)
-# ----------------------------
-ENG_STOP = set(stopwords.words("english"))
+
+def Web_scrapper_BeautifulSoup(URL: str) -> str:
+    """Extract visible text, prioritising main article content."""
+    Raw_HTML  = Web_Scrapper_HTML(URL)
+    soup_html = BeautifulSoup(Raw_HTML, "lxml")
+
+    # Try content selectors first
+    main_parts = []
+    for sel in CONTENT_SELECTORS:
+        elements = soup_html.select(sel)
+        if elements:
+            for el in elements:
+                main_parts.append(el.get_text(separator=" "))
+            break
+
+    if main_parts:
+        Text = " ".join(main_parts)
+    else:
+        # Fallback: remove nav/footer/header then collect all remaining text
+        for tag in soup_html.find_all(["nav", "footer", "header", "aside", "script", "style"]):
+            tag.decompose()
+        text         = soup_html.findAll(text=True)
+        visible_text = []
+        tag_names    = ["html", "style", "script", "head", "[document]", "img"]
+        for element in text:
+            if element.parent.name not in tag_names:
+                if not isinstance(element, Comment):
+                    visible_text.append(element.strip())
+        Text = u" ".join(visible_text)
+
+    text_lines = (line.strip() for line in Text.splitlines())
+    chunks     = (phrase.strip() for line in text_lines for phrase in line.split(" "))
+    return u" ".join(chunk for chunk in chunks if chunk)
+
+
+# =============================================================================
+# Cell 5: Preprocessing (same style as teacher, expanded noise list)
+# =============================================================================
+Special_Char_List = re.compile(
+    r"`|~|!|@|\#|\$|\%|\^|\&|\*|\(|\)|\-|\_|\=|\+|\[|\]|\{|\}|\\|\||\;|\:|\\'|\"|,|\<|\.|\>|\?|\/"
+)
+
+eng_stopword_list = set(stopwords.words("english"))
+
+common_nouns = (
+    "gift debt free est dec big than who "
+    "rss feed subscribe newsletter chatgpt openai desantis trending "
+    "advertisement advertise sponsored cookie cookies privacy policy "
+    "terms login signup signin register account profile "
+    "share comment comments reply report flag like dislike follow "
+    "related recommended popular latest breaking update updates live "
+    "photo photos video videos gallery slideshow "
+    "read more less expand collapse load loading error close "
+    "open toggle dropdown sidebar widget banner popup modal "
+    "edition network herald universityherald university "
+    "print email save download upload send submit cancel reset "
+    "skip content section page pages site website web "
+    "click tap swipe scroll drag drop select choose pick "
+    "arrowdown arrowup arrowleft arrowright hamburger openinnewtab "
+    "squarefacebook squareinstagram squarelinkedin squaretwitter squarextwitter squareyoutube "
+    "bookmark bookmarkfilled threedots thumbup thumbdown visibility visibilityoff "
+    "facebook instagram linkedin tiktok youtube twitter "
+    "home menu search show hide view back next previous copyright "
+    "article articles htm html php asp aspx www http https com org net"
+).split()
+
+
+def preprocess_text(HTML_text, common_nouns, Special_Char_List, eng_stopword_list):
+    """Tokenise and filter (same interface as teacher)."""
+    tokens_list = []
+    noise_set   = set(common_nouns)
+    for token in HTML_text.split():
+        token = token.lower().replace("'", "")
+        token = Special_Char_List.sub("", token.strip())
+        if (
+            len(token) > 2 and
+            token not in eng_stopword_list and
+            token not in noise_set and
+            not token.isdigit() and
+            not token[0].isdigit()
+        ):
+            tokens_list.append(token)
+    return tokens_list
+
+
+# =============================================================================
+# Cell 6: POS Separator (same interface as teacher)
+# =============================================================================
+adj_tags  = ["JJ", "JJR", "JJS"]
+verb_tags = ["VB", "VBD", "VBG", "VBN", "VBP", "VBZ"]
+
+
+def POS_Separator(candidate_words):
+    """Separate tokens by POS. Proper nouns are stored separately for weighting."""
+    nouns, adj, verb, proper_nouns = [], [], [], []
+    tagged = pos_tag(candidate_words)
+    for word, tag in tagged:
+        if tag in ("NNP", "NNPS"):
+            proper_nouns.append(word)
+            nouns.append(word)       # also include in the general noun list
+        elif tag in ("NN", "NNS"):
+            nouns.append(word)
+        elif tag in adj_tags:
+            adj.append(word)
+        elif tag in verb_tags:
+            verb.append(word)
+    return nouns, adj, verb, proper_nouns
+
+
+# =============================================================================
+# Cell 7: Lemmatization (same as teacher)
+# =============================================================================
 lemmatizer = WordNetLemmatizer()
 
-SITE_NOISE = {
-    "home","menu","search","show","hide","view","back","next","previous","copyright",
-    "facebook","instagram","linkedin","tiktok","youtube","twitter","x",
-    "arrowdown","arrowup","arrowleft","arrowright","hamburger","openinnewtab",
-    "squarefacebook","squareinstagram","squarelinkedin","squaretwitter","squarextwitter","squareyoutube",
-    "bookmark","bookmarkfilled","threedots","thumbup","thumbdown","visibility","visibilityoff",
+
+def word_lemmatization(pos_tokens):
+    return [lemmatizer.lemmatize(word) for word in pos_tokens]
+
+
+# =============================================================================
+# Cell 8: Clean keyword tokens
+#         Improved: WordNet validation added to remove compound noise tokens,
+#                   informal words, and abbreviations
+# =============================================================================
+
+# Custom allow-list for proper nouns not in WordNet (acronyms, place names, etc.)
+KNOWN_PROPER = {
+    "ncaa", "nfl", "nba", "nhl", "mlb", "ufc", "mma", "usc", "ucla",
+    "gop", "cia", "fbi", "nasa", "osha", "epa", "cdc", "who",
+    "iowa", "ohio", "penn", "duke", "yale", "mit", "nyu",
+    "trump", "obama", "biden", "putin",
 }
 
-def normalize_text(s: str) -> str:
+
+def is_real_word(word: str) -> bool:
     """
-    lower + unify hyphen/apostrophe + remove extra punctuation but keep spaces
+    Returns True if the word is in WordNet, in KNOWN_PROPER,
+    or starts with a capital letter (likely a proper noun).
+    Used to filter out compound tokens such as 'michiganann'.
     """
-    s = s.lower()
-    s = s.replace("’", "'")
-    # keep hyphens as space (important!)
-    s = re.sub(r"[-_/]", " ", s)
-    # remove punctuation except spaces
-    s = re.sub(r"[^a-z0-9\s]", " ", s)
-    s = re.sub(r"\s+", " ", s).strip()
-    return s
+    if word in KNOWN_PROPER:
+        return True
+    if wn.synsets(word):
+        return True
+    # Tokens that are too long are likely concatenated compounds -> exclude
+    if len(word) > 15:
+        return False
+    return False
 
-def tokenize_words(s: str):
-    s = normalize_text(s)
-    toks = s.split()
-    # light filtering
-    out = []
-    for t in toks:
-        if len(t) < 3:
+
+def clean_keywords_tokens(words):
+    site_stop = {
+        "guardian", "news", "world", "search", "hide", "show", "menu", "view",
+        "home", "back", "edition", "international", "latest", "today", "paper",
+        "jobs", "subscriptions", "europe", "uk", "us", "americas", "asia",
+        "australia", "africa", "middle", "east", "facebook", "instagram",
+        "linkedin", "tiktok", "youtube", "dcr",
+        "herald", "university", "universityherald", "rss", "subscribe",
+        "chatgpt", "openai", "desantis", "newsletter", "advertisement",
+        # Overly generic words that hurt precision
+        "said", "say", "says", "year", "years", "time", "day", "week",
+        "month", "people", "man", "woman", "one", "two", "three", "four",
+        "five", "six", "seven", "eight", "nine", "ten", "new", "old",
+        "good", "great", "first", "last", "make", "made", "take",
+        # Informal / colloquial / abbreviation noise
+        "thats", "dont", "cant", "wont", "isnt", "arent", "didnt",
+        "youre", "theyre", "heres", "whats", "lets", "its",
+        "osu", "unt", "dnt", "dat", "lol", "omg",
+    }
+    cleaned = []
+    for w in words:
+        w = w.lower()
+        if len(w) < 3:
             continue
-        if t in ENG_STOP or t in SITE_NOISE:
+        if not w.isalpha():
             continue
-        if t.isdigit():
+        if w in site_stop:
             continue
-        out.append(t)
-    return out
+        # Compound word check: longer than 12 chars, not in WordNet, not a known proper noun -> remove
+        if len(w) > 12 and not wn.synsets(w) and w not in KNOWN_PROPER:
+            continue
+        cleaned.append(w)
+    return cleaned
 
-# ----------------------------
-# 5) HRANK keyword extraction (unigram + phrase extension)
-# ----------------------------
-def pos_separate(tokens):
-    tagged = nltk.pos_tag(tokens)
-    nouns, adjs, verbs = [], [], []
-    for w, t in tagged:
-        if t.startswith("NN"):
-            nouns.append(w)
-        elif t.startswith("JJ"):
-            adjs.append(w)
-        elif t.startswith("VB"):
-            verbs.append(w)
-    return nouns, adjs, verbs
 
-def lemmatize_words(words):
-    return [lemmatizer.lemmatize(w) for w in words]
+# =============================================================================
+# Cell 9: WordNet synsets (same as teacher)
+# =============================================================================
+def Get_Synsets(candidate_words):
+    words_with_synsets    = []
+    words_without_synsets = []
+    for word in candidate_words:
+        if len(wn.synsets(word)) > 0:
+            words_with_synsets.append(word)
+        else:
+            words_without_synsets.append(word)
+    return words_with_synsets, words_without_synsets
 
+
+# =============================================================================
+# Cell 10: Similarity matrix & clustering (same as teacher)
+# =============================================================================
 def compute_similarity_matrix(words):
-    syn_cache = {w: wn.synsets(w) for w in words}
-    mat = []
-    for w1 in words:
+    similarity_matrix = []
+    for word1 in words:
+        synsets1 = wn.synsets(word1)
+        if not synsets1:
+            similarity_matrix.append([1.0] * len(words))
+            continue
         row = []
-        syn1 = syn_cache[w1]
-        for w2 in words:
-            syn2 = syn_cache[w2]
-            if not syn1 or not syn2:
+        for word2 in words:
+            synsets2 = wn.synsets(word2)
+            if not synsets2:
                 row.append(1.0)
                 continue
-            sim = syn1[0].wup_similarity(syn2[0])
-            row.append(1.0 - (sim if sim is not None else 0.0))
-        mat.append(row)
-    return mat
+            similarity = synsets1[0].wup_similarity(synsets2[0])
+            row.append(1.0 - (similarity if similarity is not None else 0.0))
+        similarity_matrix.append(row)
+    return similarity_matrix
 
-def cluster_keywords(freq_counter: Counter, top_n_vocab=150, num_clusters=8):
-    top_words = [w for w, _ in freq_counter.most_common(top_n_vocab)]
-    if len(top_words) < max(2, num_clusters):
-        return top_words
 
-    dist = compute_similarity_matrix(top_words)
-    labels = AgglomerativeClustering(n_clusters=num_clusters, metric="precomputed", linkage="complete").fit_predict(dist)
+def compute_clustering(sim_mat, num_clusters):
+    clustering_model = AgglomerativeClustering(
+        n_clusters=num_clusters, metric="precomputed", linkage="complete"
+    )
+    return clustering_model.fit_predict(sim_mat)
 
+
+# =============================================================================
+# Cell 11: extract_keywords & get_clusters
+# =============================================================================
+def extract_keywords(cluster_labels, words, words_fr, num_clusters):
     clusters = {i: [] for i in range(num_clusters)}
-    for i, lab in enumerate(labels):
-        clusters[lab].append(top_words[i])
+    for i, label in enumerate(cluster_labels):
+        clusters[label].append((words[i], words_fr.get(words[i], 0)))
 
-    reps = []
-    for lab, ws in clusters.items():
-        ws.sort(key=lambda w: freq_counter[w], reverse=True)
-        reps.append(ws[0])
+    keywords = []
+    max_fr   = max(words_fr.values()) if words_fr else 1
+    for cluster in clusters.values():
+        cluster.sort(key=lambda x: x[1], reverse=True)
+        # Always take the top representative word of each cluster
+        keywords.append(cluster[0][0])
+        # Add secondary words only if frequency is high enough (strict threshold)
+        for word, fr in cluster[1:]:
+            if fr > 5 and fr > 0.3 * max_fr:
+                keywords.append(word)
+    return keywords
 
-    # unique preserve
-    seen, out = set(), []
-    for w in reps:
-        if w not in seen:
-            seen.add(w)
-            out.append(w)
-    return out
 
-def hrank_extract_keywords(visible_text: str, top_k=10):
-    tokens = tokenize_words(visible_text)
-    if not tokens:
-        return []
+def get_clusters(words_fr, words, num_clusters=8):
+    if len(words) < num_clusters:
+        return words
+    similarity_matrix = compute_similarity_matrix(words)
+    cluster_labels    = compute_clustering(similarity_matrix, num_clusters)
+    return extract_keywords(cluster_labels, words, words_fr, num_clusters)
 
-    nouns, adjs, verbs = pos_separate(tokens)
-    nouns = lemmatize_words(nouns)
-    nouns = [w for w in nouns if len(w) >= 3 and w not in ENG_STOP and w not in SITE_NOISE and w.isalpha()]
-    if not nouns:
-        return []
 
-    freq = Counter(nouns)
-    base = cluster_keywords(freq, top_n_vocab=150, num_clusters=8)
+def fr_adj_ver(lemma_words, N):
+    return [word for word, _ in Counter(lemma_words).most_common(N)]
 
-    # Optional: also add frequent bigrams from the text (helps match GT phrases)
-    bigrams = Counter(zip(tokens, tokens[1:]))
-    bigram_phrases = [" ".join(bg) for bg, c in bigrams.most_common(20) if c >= 2]
 
-    combined = base + bigram_phrases
+# =============================================================================
+# Cell 12: Bigram helpers
+# =============================================================================
+stop_bigram = {
+    "guardian", "live", "news", "world", "edition", "search",
+    "back", "home", "top", "hide", "show", "view", "all", "stories",
+    "most", "today", "herald", "university", "rss", "chatgpt",
+    "openai", "desantis", "said", "say", "says",
+}
 
-    # unique + top_k
-    seen, out = set(), []
-    for w in combined:
-        w = normalize_text(w)
-        if not w:
-            continue
-        if w not in seen:
-            seen.add(w)
-            out.append(w)
-        if len(out) >= top_k:
-            break
-    return out
 
-# ----------------------------
-# 6) Evaluation (token-based to avoid "all zero")
-# ----------------------------
+def extract_bigrams(HTML_Text, min_count=3, top_n=3):
+    """Return top noun-pair bigrams (min_count >= 3, top 3 only)."""
+    bpairs = []
+    for sent in sent_tokenize(HTML_Text):
+        toks   = word_tokenize(sent)
+        tagged = pos_tag(toks)
+        ns_s   = [w.lower() for w, t in tagged
+                  if t.startswith("NN") and w.isalpha() and len(w) >= 3
+                  and w.lower() not in stop_bigram
+                  and w.lower() not in eng_stopword_list]
+        for i in range(len(ns_s) - 1):
+            bpairs.append((ns_s[i], ns_s[i + 1]))
+    return [" ".join(p) for p, c in Counter(bpairs).most_common(top_n) if c >= min_count]
+
+
+# =============================================================================
+# Cell 13: Evaluation helpers
+# =============================================================================
 def gt_to_token_set(gt_phrases):
     tokens = []
     for phrase in gt_phrases:
-        tokens.extend(tokenize_words(phrase))
+        for token in phrase.lower().split():
+            token = re.sub(r"[^a-z]", "", token)
+            if len(token) >= 3 and token not in eng_stopword_list:
+                tokens.append(token)
     return set(tokens)
+
 
 def pred_to_token_set(pred_keywords):
     tokens = []
     for kw in pred_keywords:
-        tokens.extend(tokenize_words(kw))
+        for token in kw.lower().split():
+            token = re.sub(r"[^a-z]", "", token)
+            if len(token) >= 3:
+                tokens.append(token)
     return set(tokens)
 
-def prf(pred: set[str], gt: set[str]):
+
+def prf(pred: set, gt: set):
     tp = len(pred & gt)
     fp = len(pred - gt)
     fn = len(gt - pred)
-    p = tp / (tp + fp) if (tp + fp) else 0.0
-    r = tp / (tp + fn) if (tp + fn) else 0.0
-    f = (2*p*r/(p+r)) if (p+r) else 0.0
+    p  = tp / (tp + fp) if (tp + fp) else 0.0
+    r  = tp / (tp + fn) if (tp + fn) else 0.0
+    f  = (2 * p * r / (p + r)) if (p + r) else 0.0
     return p, r, f
 
-# ----------------------------
-# 7) Run
-# ----------------------------
-def run_herald(doc_ids=range(0, 20), top_k=10, debug_first=True):
-    rows = []
-    for doc_id in doc_ids:
-        try:
-            page_url, gt_phrases = read_doc_meta(doc_id)
-            html = fetch_html_from_url(page_url)
-            text = extract_visible_text(html)
 
-            pred_keywords = hrank_extract_keywords(text, top_k=top_k)
+# =============================================================================
+# Cell 14: Full pipeline for one document
+# =============================================================================
+def process_doc(doc_id: int, debug: bool = False):
+    """Run full pipeline for one herald document. Returns (p, r, f)."""
+    page_url, gt_phrases = read_doc_meta(doc_id)
+    HTML_Text            = Web_scrapper_BeautifulSoup(page_url)
 
-            gt_tokens = gt_to_token_set(gt_phrases)
-            pred_tokens = pred_to_token_set(pred_keywords)
+    # Preprocess
+    candidate_words    = preprocess_text(HTML_Text, common_nouns, Special_Char_List, eng_stopword_list)
+    nouns, adj, verb, proper_nouns = POS_Separator(candidate_words)
+    lemma_nouns        = word_lemmatization(nouns)
+    lemma_adj          = word_lemmatization(adj)
+    lemma_verb         = word_lemmatization(verb)
+    lemma_proper_nouns = word_lemmatization(proper_nouns)
 
-            p, r, f = prf(pred_tokens, gt_tokens)
+    # Build frequency counter; proper nouns receive a x2 bonus
+    clean_nouns  = clean_keywords_tokens(lemma_nouns)
+    proper_set   = set(clean_keywords_tokens(lemma_proper_nouns))
+    noun_counter = Counter()
+    for w in clean_nouns:
+        noun_counter[w] += 2 if w in proper_set else 1
 
-            if debug_first and doc_id == list(doc_ids)[0]:
-                print("---- DEBUG (first doc) ----")
-                print("URL:", page_url)
-                print("GT phrases (sample):", gt_phrases[:10])
-                print("GT tokens (sample):", list(gt_tokens)[:20])
-                print("Pred keywords:", pred_keywords)
-                print("Pred tokens:", list(pred_tokens)[:20])
-                print("---------------------------")
+    # Add keyword candidates from the URL slug (rich in proper nouns)
+    url_slug   = page_url.split("?")[0]          # strip query string
+    url_tokens = [t for t in re.split(r"[-_/.]", url_slug.lower())
+                  if len(t) >= 3 and t.isalpha()
+                  and t not in eng_stopword_list
+                  and t not in set(common_nouns)
+                  and t not in {"htm", "html", "php", "com", "org", "net", "www"}]
+    for t in url_tokens:
+        noun_counter[t] += 3   # URL-derived tokens are highly indicative
 
-            rows.append((doc_id, p, r, f))
-        except Exception as e:
-            rows.append((doc_id, 0.0, 0.0, 0.0))
-            print(f"[ERROR] doc {doc_id}: {e}")
+    top_nouns = [w for w, _ in noun_counter.most_common(100)]
 
-    avg_p = sum(x[1] for x in rows) / len(rows)
-    avg_r = sum(x[2] for x in rows) / len(rows)
-    avg_f = sum(x[3] for x in rows) / len(rows)
+    # Cluster keywords
+    keywords  = get_clusters(dict(noun_counter), top_nouns, num_clusters=8)
 
-    print(f"Docs: {len(rows)}")
-    print(f"AVG Precision={avg_p:.4f}, Recall={avg_r:.4f}, F1={avg_f:.4f}")
+    # Add top 1 adjective and top 1 verb
+    keywords += fr_adj_ver(lemma_adj, 1) + fr_adj_ver(lemma_verb, 1)
 
+    # Add top bigrams
+    keywords += extract_bigrams(HTML_Text, min_count=3, top_n=3)
+
+    # Deduplicate and post-filter residual compound tokens
+    seen, unique_keywords = set(), []
+    for kw in keywords:
+        kw_clean = kw.lower().strip()
+        if kw_clean in seen:
+            continue
+        seen.add(kw_clean)
+        # Single-word compound check: >12 chars, not in WordNet, not a known proper noun -> skip
+        if " " not in kw_clean:
+            if len(kw_clean) > 12 and not wn.synsets(kw_clean) and kw_clean not in KNOWN_PROPER:
+                continue
+        unique_keywords.append(kw_clean)
+
+    # Evaluate
+    gt_tok   = gt_to_token_set(gt_phrases)
+    pred_tok = pred_to_token_set(unique_keywords)
+    p, r, f  = prf(pred_tok, gt_tok)
+
+    if debug:
+        print(f"--- Doc {doc_id} ---")
+        print("URL :", page_url)
+        print("GT  :", gt_phrases)
+        print("Pred:", unique_keywords)
+        print("GT tokens :", sorted(gt_tok))
+        print("Pred tokens:", sorted(pred_tok))
+        print(f"P={p:.3f}  R={r:.3f}  F1={f:.3f}")
+
+    return p, r, f
+
+
+# =============================================================================
+# Cell 15: Run evaluation on all 120 documents
+# =============================================================================
 if __name__ == "__main__":
-    run_herald(doc_ids=range(0, 20), top_k=10, debug_first=True)
+    DOC_IDS = range(0, 120)
+    results = []
+
+    for doc_id in DOC_IDS:
+        try:
+            p, r, f = process_doc(doc_id, debug=(doc_id == 0))
+            results.append((doc_id, p, r, f))
+            print(f"Doc {doc_id:2d}: P={p:.3f}  R={r:.3f}  F1={f:.3f}")
+        except Exception as e:
+            results.append((doc_id, 0.0, 0.0, 0.0))
+            print(f"[ERROR] Doc {doc_id}: {e}")
+
+    avg_p = sum(x[1] for x in results) / len(results)
+    avg_r = sum(x[2] for x in results) / len(results)
+    avg_f = sum(x[3] for x in results) / len(results)
+
+    print(f"\n=== Results over {len(results)} docs ===")
+    print(f"AVG Precision = {avg_p:.4f}")
+    print(f"AVG Recall    = {avg_r:.4f}")
+    print(f"AVG F1        = {avg_f:.4f}")
