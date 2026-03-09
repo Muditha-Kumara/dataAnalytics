@@ -1,0 +1,5 @@
+DataSet,Precision,Recall,F1-score,Evaluated Pages
+DRank_ruoka,0.31,0.4613,0.3593,20
+HRank_ruoka,0.205,0.1957,0.1958,20
+DRank_Kotiliesi,0.205,0.3737,0.2558,20
+HRank_Kotiliesi,0.205,0.1957,0.1958,20
