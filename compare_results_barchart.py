@@ -66,13 +66,16 @@ except Exception as e:
     print(f"Error details: {e}")
 
 # Create and save F1-score only bar chart
+df["Dataset"] = df["DataSet"].str.split("_").str[-1]
+df["Method"] = df["DataSet"].str.split("_").str[0]
 fig_f1 = px.bar(
     df,
     x="DataSet",
     y="F1-score",
+    color="Dataset",
     text="F1-score",
     title="Keyword Extraction F1-score Comparison",
-    labels={"DataSet": "Method", "F1-score": "F1-score"},
+    labels={"DataSet": "Method", "F1-score": "F1-score", "Dataset": "Dataset"},
     height=600,
     width=827
 )
