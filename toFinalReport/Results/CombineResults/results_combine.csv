@@ -1,6 +1,6 @@
 DataSet,Precision,Recall,F1-score,Evaluated Pages
-Combine_Indian,0.3460,0.5899,0.4278,200
-Combine_German,0.3363,0.3241,0.2810,80
+Combine_Indian,0.3134,0.5564,0.3929,329
+Combine_German,0.3321,0.3258,0.2798,81
 Combine_Kotiliesi,0.3985,0.3003,0.3331,200
 Combine_Herald,0.3230,0.4602,0.3783,200
 Combine_ruoka,0.3850,0.3190,0.3396,200
