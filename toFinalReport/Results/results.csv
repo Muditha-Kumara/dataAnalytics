@@ -1,8 +1,8 @@
 DataSet,Precision,Recall,F1-score,Evaluated Pages
 HRank_Kotiliesi,0.136,0.1594,0.1434,200
 DRank_Kotiliesi,0.2045,0.3521,0.2506,200
-HRank_ruoka,0.136,0.1594,0.1434,200
-DRank_ruoka,0.229,0.3912,0.281,200
+HRank_Ruoka,0.136,0.1594,0.1434,200
+DRank_Ruoka,0.229,0.3912,0.281,200
 HRank_German,0.315,0.2201,0.2308,80
 DRank_German,0.3237,0.2356,0.2406,80
 HRank_Indian,0.3015,0.5144,0.3727,200
