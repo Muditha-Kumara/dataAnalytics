@@ -1,11 +1,11 @@
 DataSet,Precision,Recall,F1-score,Evaluated Pages
-HRank_German,0.33,0.2163,0.2211,20
-DRank_German,0.31,0.2407,0.2341,20
-HRank_Indian,0.33,0.5258,0.3999,20
-DRank_Indian,0.375,0.5671,0.445,20
-HRank_Kotiliesi,0.195,0.1893,0.1879,20
-DRank_Kotiliesi,0.2,0.3723,0.2517,20
-HRank_ruoka,0.195,0.1893,0.1879,20
-DRank_ruoka,0.3,0.4603,0.3508,20
-HRank_Herald,0.465,0.65,0.5415,20
-DRank_Herald,0.255,0.3572,0.2972,20
+DRank_Indian,0.2875,0.4842,0.3538,200
+HRank_Indian,0.3015,0.5144,0.3727,200
+DRank_German,0.3237,0.2356,0.2406,80
+HRank_German,0.315,0.2201,0.2308,80
+DRank_Kotiliesi,0.2045,0.3521,0.2506,200
+HRank_Herald,0.493,0.6983,0.5762,200
+HRank_Kotiliesi,0.136,0.1594,0.1434,200
+DRank_Herald,0.298,0.4219,0.348,200
+DRank_ruoka,0.229,0.3912,0.281,200
+HRank_ruoka,0.136,0.1594,0.1434,200
